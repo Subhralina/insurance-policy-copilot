@@ -11,11 +11,10 @@ when deployed and falls back to "ollama" for local runs where no
 secrets file exists.
 
 Session isolation: each browser session gets its own Chroma collection
-name (see session_collection_name below). Without this, every visitor
-to the deployed app would share one global document store -- one
-person's uploaded policy would show up in someone else's session, and
-incognito/private browsing wouldn't help since Chroma's index lives on
-the server's disk, not in the browser.
+name. Without this, every visitor to the deployed app would share one
+global document store -- one person's uploaded policy would show up
+in someone else's session, and incognito/private browsing wouldn't
+help since Chroma's index lives on the server's disk, not the browser.
 """
 
 import os
@@ -40,8 +39,8 @@ from src.query import answer_from_doc
 from src.compare import compare
 from src.exhibit import build_exhibit, render_markdown
 
-st.set_page_config(page_title="Insurance Coverage Copilot", page_icon="📋", layout="wide")
-st.title("📋 Insurance Coverage Copilot")
+st.set_page_config(page_title="Insurance Document Copilot", page_icon="📋", layout="wide")
+st.title("📋 Insurance Document Copilot")
 st.caption(
     "Upload one or more commercial insurance policies. Ask questions, compare "
     "across policies, or generate a coverage comparison exhibit."
@@ -59,54 +58,53 @@ if "indexed_files" not in st.session_state:
     st.session_state["indexed_files"] = set()
 
 with st.sidebar:
+    # Clear button lives at the top so it stays reachable as the
+    # document list at the bottom grows.
+    if st.button("🗑️ Clear my documents", help="Removes every document indexed in this session. Cannot be undone."):
+        clear_collection(collection_name=collection_name)
+        st.session_state["indexed_files"] = set()
+        st.rerun()
+
+    st.divider()
     st.subheader("Upload a policy")
-    st.caption("Set carrier/coverage first if you want them tagged, then choose a file -- it indexes automatically.")
     carrier = st.text_input("Carrier name", value="", placeholder="e.g. chubb")
     coverage = st.text_input("Coverage type", value="", placeholder="e.g. general_liability")
     uploaded = st.file_uploader("PDF", type="pdf", key="uploader")
 
-    # Auto-index as soon as a new file appears -- no button. Track which
-    # filenames have already been indexed this session so re-rendering
-    # the page (e.g. after asking a question) doesn't re-index the same
-    # file over and over.
+    # Auto-index as soon as a new file appears -- no button, no visible
+    # loading/success text. Track already-indexed filenames so
+    # re-rendering the page (e.g. after asking a question) doesn't
+    # silently re-index the same file again.
     if uploaded is not None and uploaded.name not in st.session_state["indexed_files"]:
-        doc_id = uploaded.name.replace(".pdf", "")
         save_dir = tempfile.gettempdir()
         save_path = os.path.join(save_dir, uploaded.name)
         with open(save_path, "wb") as f:
             f.write(uploaded.read())
-
-        with st.spinner(f"Reading {uploaded.name} and building its index..."):
-            n_chunks = index_pdf(
-                save_path,
-                carrier=carrier or "unknown",
-                coverage_type=coverage or "unknown",
-                collection_name=collection_name,
-            )
+        index_pdf(
+            save_path,
+            carrier=carrier or "unknown",
+            coverage_type=coverage or "unknown",
+            collection_name=collection_name,
+        )
         st.session_state["indexed_files"].add(uploaded.name)
-        st.success(f"Indexed {n_chunks} sections from '{doc_id}'")
 
-    st.divider()
-    if st.button("🗑️ Clear my documents", help="Removes every document indexed in this session. Cannot be undone."):
-        clear_collection(collection_name=collection_name)
-        st.session_state["indexed_files"] = set()
-        st.success("Cleared. Upload a new document to start again.")
-        st.rerun()
+    # Refresh the list every render so it reflects what's actually in
+    # Chroma. Shown at the bottom of the sidebar only -- not the main
+    # screen -- per the layout above.
+    try:
+        indexed_docs = list_indexed_documents(collection_name=collection_name)
+    except Exception:
+        indexed_docs = []
 
-# Refresh the list of indexed documents every render so the UI reflects
-# what's actually in Chroma, not just what was uploaded this session.
-try:
-    indexed_docs = list_indexed_documents(collection_name=collection_name)
-except Exception:
-    indexed_docs = []
+    if indexed_docs:
+        st.divider()
+        st.caption("Documents")
+        for d in indexed_docs:
+            st.caption(f"{d['doc_id']} — {d['carrier']} / {d['coverage_type']}")
 
 if not indexed_docs:
-    st.info("Upload and index at least one PDF using the sidebar to get started.")
+    st.info("Upload a PDF from the sidebar to get started.")
     st.stop()
-
-st.markdown(f"**📁 {len(indexed_docs)} document(s) indexed**")
-for d in indexed_docs:
-    st.caption(f"{d['doc_id']} — carrier: {d['carrier']}, coverage: {d['coverage_type']}")
 
 doc_ids = [d["doc_id"] for d in indexed_docs]
 
@@ -117,7 +115,7 @@ with tab_ask:
     selected_doc = st.selectbox("Document", doc_ids, key="ask_doc")
     with st.form("ask_form", border=False):
         question = st.text_input("Question", key="ask_question")
-        ask_submitted = st.form_submit_button("Ask")
+        ask_submitted = st.form_submit_button("Submit")
     if ask_submitted and question:
         with st.spinner("Reading through the document to answer that..."):
             try:
@@ -135,7 +133,7 @@ with tab_compare:
     st.caption("Ask a question that compares ACROSS all indexed documents.")
     with st.form("compare_form", border=False):
         compare_question = st.text_input("Question", key="compare_question")
-        compare_submitted = st.form_submit_button("Compare")
+        compare_submitted = st.form_submit_button("Submit")
     if compare_submitted and compare_question:
         with st.spinner("Checking each document and comparing..."):
             try:
@@ -148,7 +146,7 @@ with tab_compare:
 with tab_exhibit:
     st.caption("Generate a coverage comparison exhibit between two documents.")
     if len(doc_ids) < 2:
-        st.info("Index at least 2 documents to generate an exhibit.")
+        st.info("Upload at least 2 documents to generate an exhibit.")
     else:
         col1, col2 = st.columns(2)
         with col1:
