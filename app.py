@@ -56,6 +56,8 @@ collection_name = f"session_{st.session_state['session_id']}"
 
 if "indexed_files" not in st.session_state:
     st.session_state["indexed_files"] = set()
+if "uploader_key" not in st.session_state:
+    st.session_state["uploader_key"] = 0
 
 with st.sidebar:
     # Clear button lives at the top so it stays reachable as the
@@ -63,18 +65,19 @@ with st.sidebar:
     if st.button("🗑️ Clear my documents", help="Removes every document indexed in this session. Cannot be undone."):
         clear_collection(collection_name=collection_name)
         st.session_state["indexed_files"] = set()
+        st.session_state["uploader_key"] += 1
         st.rerun()
 
     st.divider()
     st.subheader("Upload a policy")
     carrier = st.text_input("Carrier name", value="", placeholder="e.g. chubb")
     coverage = st.text_input("Coverage type", value="", placeholder="e.g. general_liability")
-    uploaded = st.file_uploader("PDF", type="pdf", key="uploader")
+    uploaded = st.file_uploader("PDF", type="pdf", key=f"uploader_{st.session_state['uploader_key']}")
 
     # Auto-index as soon as a new file appears -- no button, no visible
-    # loading/success text. Track already-indexed filenames so
-    # re-rendering the page (e.g. after asking a question) doesn't
-    # silently re-index the same file again.
+    # loading/success text. Once indexing finishes, bump the uploader's
+    # key and rerun so the widget remounts empty -- otherwise the
+    # filename/size chip would sit there indefinitely after upload.
     if uploaded is not None and uploaded.name not in st.session_state["indexed_files"]:
         save_dir = tempfile.gettempdir()
         save_path = os.path.join(save_dir, uploaded.name)
@@ -87,6 +90,8 @@ with st.sidebar:
             collection_name=collection_name,
         )
         st.session_state["indexed_files"].add(uploaded.name)
+        st.session_state["uploader_key"] += 1
+        st.rerun()
 
     # Refresh the list every render so it reflects what's actually in
     # Chroma. Shown at the bottom of the sidebar only -- not the main
