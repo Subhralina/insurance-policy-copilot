@@ -55,21 +55,22 @@ if "session_id" not in st.session_state:
     st.session_state["session_id"] = uuid.uuid4().hex[:12]
 collection_name = f"session_{st.session_state['session_id']}"
 
+if "indexed_files" not in st.session_state:
+    st.session_state["indexed_files"] = set()
+
 with st.sidebar:
     st.subheader("Upload a policy")
-    with st.form("index_form", clear_on_submit=False):
-        uploaded = st.file_uploader("PDF", type="pdf", key="uploader")
-        carrier = st.text_input("Carrier name", value="", placeholder="e.g. chubb")
-        coverage = st.text_input("Coverage type", value="", placeholder="e.g. general_liability")
-        # Inside a form, pressing Enter in any text field submits the form --
-        # same effect as clicking this button, no separate click needed.
-        submitted = st.form_submit_button("Index this document")
+    st.caption("Set carrier/coverage first if you want them tagged, then choose a file -- it indexes automatically.")
+    carrier = st.text_input("Carrier name", value="", placeholder="e.g. chubb")
+    coverage = st.text_input("Coverage type", value="", placeholder="e.g. general_liability")
+    uploaded = st.file_uploader("PDF", type="pdf", key="uploader")
 
-    if submitted and uploaded is not None:
+    # Auto-index as soon as a new file appears -- no button. Track which
+    # filenames have already been indexed this session so re-rendering
+    # the page (e.g. after asking a question) doesn't re-index the same
+    # file over and over.
+    if uploaded is not None and uploaded.name not in st.session_state["indexed_files"]:
         doc_id = uploaded.name.replace(".pdf", "")
-        # Save under a stable, meaningful filename (not a random tmp name)
-        # so doc_id stays consistent across re-runs and matches what the
-        # CLI shows in `python main.py list`.
         save_dir = tempfile.gettempdir()
         save_path = os.path.join(save_dir, uploaded.name)
         with open(save_path, "wb") as f:
@@ -82,13 +83,13 @@ with st.sidebar:
                 coverage_type=coverage or "unknown",
                 collection_name=collection_name,
             )
+        st.session_state["indexed_files"].add(uploaded.name)
         st.success(f"Indexed {n_chunks} sections from '{doc_id}'")
-    elif submitted and uploaded is None:
-        st.warning("Choose a PDF before indexing.")
 
     st.divider()
     if st.button("🗑️ Clear my documents", help="Removes every document indexed in this session. Cannot be undone."):
         clear_collection(collection_name=collection_name)
+        st.session_state["indexed_files"] = set()
         st.success("Cleared. Upload a new document to start again.")
         st.rerun()
 
@@ -103,9 +104,9 @@ if not indexed_docs:
     st.info("Upload and index at least one PDF using the sidebar to get started.")
     st.stop()
 
-with st.expander(f"📁 {len(indexed_docs)} document(s) indexed", expanded=True):
-    for d in indexed_docs:
-        st.write(f"**{d['doc_id']}** — carrier: {d['carrier']}, coverage: {d['coverage_type']}")
+st.markdown(f"**📁 {len(indexed_docs)} document(s) indexed**")
+for d in indexed_docs:
+    st.caption(f"{d['doc_id']} — carrier: {d['carrier']}, coverage: {d['coverage_type']}")
 
 doc_ids = [d["doc_id"] for d in indexed_docs]
 
@@ -114,7 +115,7 @@ tab_ask, tab_compare, tab_exhibit = st.tabs(["Ask", "Compare", "Exhibit"])
 with tab_ask:
     st.caption("Ask a question about ONE specific document.")
     selected_doc = st.selectbox("Document", doc_ids, key="ask_doc")
-    with st.form("ask_form"):
+    with st.form("ask_form", border=False):
         question = st.text_input("Question", key="ask_question")
         ask_submitted = st.form_submit_button("Ask")
     if ask_submitted and question:
@@ -132,7 +133,7 @@ with tab_ask:
 
 with tab_compare:
     st.caption("Ask a question that compares ACROSS all indexed documents.")
-    with st.form("compare_form"):
+    with st.form("compare_form", border=False):
         compare_question = st.text_input("Question", key="compare_question")
         compare_submitted = st.form_submit_button("Compare")
     if compare_submitted and compare_question:
