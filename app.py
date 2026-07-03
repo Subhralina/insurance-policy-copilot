@@ -9,9 +9,17 @@ the block below reads those secrets into the environment before the
 rest of the pipeline is imported, so it picks up "groq" automatically
 when deployed and falls back to "ollama" for local runs where no
 secrets file exists.
+
+Session isolation: each browser session gets its own Chroma collection
+name (see session_collection_name below). Without this, every visitor
+to the deployed app would share one global document store -- one
+person's uploaded policy would show up in someone else's session, and
+incognito/private browsing wouldn't help since Chroma's index lives on
+the server's disk, not in the browser.
 """
 
 import os
+import uuid
 
 import streamlit as st
 
@@ -27,7 +35,7 @@ except Exception:
 
 import tempfile
 
-from src.index import index_pdf, list_indexed_documents
+from src.index import index_pdf, list_indexed_documents, clear_collection
 from src.query import answer_from_doc
 from src.compare import compare
 from src.exhibit import build_exhibit, render_markdown
@@ -38,6 +46,14 @@ st.caption(
     "Upload one or more commercial insurance policies. Ask questions, compare "
     "across policies, or generate a coverage comparison exhibit."
 )
+
+# One collection per browser session -- generated once and stored in
+# session_state, so it's stable across reruns within the same session
+# but different for every new visitor (including you in a second tab
+# or incognito window).
+if "session_id" not in st.session_state:
+    st.session_state["session_id"] = uuid.uuid4().hex[:12]
+collection_name = f"session_{st.session_state['session_id']}"
 
 with st.sidebar:
     st.subheader("Upload a policy")
@@ -60,13 +76,20 @@ with st.sidebar:
                 save_path,
                 carrier=carrier or "unknown",
                 coverage_type=coverage or "unknown",
+                collection_name=collection_name,
             )
         st.success(f"Indexed {n_chunks} sections from '{doc_id}'")
+
+    st.divider()
+    if st.button("🗑️ Clear my documents", help="Removes every document indexed in this session. Cannot be undone."):
+        clear_collection(collection_name=collection_name)
+        st.success("Cleared. Upload a new document to start again.")
+        st.rerun()
 
 # Refresh the list of indexed documents every render so the UI reflects
 # what's actually in Chroma, not just what was uploaded this session.
 try:
-    indexed_docs = list_indexed_documents()
+    indexed_docs = list_indexed_documents(collection_name=collection_name)
 except Exception:
     indexed_docs = []
 
@@ -89,7 +112,7 @@ with tab_ask:
     if question:
         with st.spinner("Reading through the document to answer that..."):
             try:
-                result = answer_from_doc(question, selected_doc)
+                result = answer_from_doc(question, selected_doc, collection_name=collection_name)
                 st.markdown(f"**Answer:** {result['answer']}")
                 st.caption(f"Retrieved from pages: {result['retrieved_pages']}")
                 with st.expander("Show retrieved chunks (debug view)"):
@@ -105,7 +128,7 @@ with tab_compare:
     if compare_question:
         with st.spinner("Checking each document and comparing..."):
             try:
-                result = compare(compare_question)
+                result = compare(compare_question, collection_name=collection_name)
                 st.markdown(f"**Answer:** {result['answer']}")
                 st.caption(f"Compared documents: {result['documents_compared']}")
             except Exception as e:
@@ -129,6 +152,7 @@ with tab_exhibit:
                         doc_a, doc_b,
                         label_a=f"{doc_a} (expiring)",
                         label_b=f"{doc_b} (proposed)",
+                        collection_name=collection_name,
                     )
                     markdown = render_markdown(exhibit)
                     st.markdown(markdown)

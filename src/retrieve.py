@@ -7,12 +7,12 @@ retrieval quality independent of the LLM -- if the right chunk isn't
 in the top-k results, no amount of clever prompting downstream fixes it.
 """
 
-from src.index import get_collection, get_embedder
+from src.index import get_collection, get_embedder, DEFAULT_COLLECTION_NAME
 
 
-def retrieve(query: str, k: int = 4) -> list[dict]:
+def retrieve(query: str, k: int = 4, collection_name: str = DEFAULT_COLLECTION_NAME) -> list[dict]:
     embedder = get_embedder()
-    collection = get_collection(reset=False)
+    collection = get_collection(reset=False, collection_name=collection_name)
 
     query_embedding = embedder.encode([query]).tolist()
     results = collection.query(query_embeddings=query_embedding, n_results=k)
@@ -30,10 +30,12 @@ def retrieve(query: str, k: int = 4) -> list[dict]:
     return hits
 
 
-def retrieve_from_doc(query: str, doc_id: str, k: int = 3) -> list[dict]:
+def retrieve_from_doc(
+    query: str, doc_id: str, k: int = 3, collection_name: str = DEFAULT_COLLECTION_NAME
+) -> list[dict]:
     """Same as retrieve(), but scoped to a single indexed document by doc_id."""
     embedder = get_embedder()
-    collection = get_collection(reset=False)
+    collection = get_collection(reset=False, collection_name=collection_name)
 
     query_embedding = embedder.encode([query]).tolist()
     results = collection.query(

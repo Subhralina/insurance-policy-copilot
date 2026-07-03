@@ -12,6 +12,7 @@ skips:
 """
 
 from src.retrieve import retrieve, retrieve_from_doc
+from src.index import DEFAULT_COLLECTION_NAME
 from src.llm import generate
 
 PROMPT_TEMPLATE = """You are answering a question using ONLY the context below, \
@@ -30,8 +31,8 @@ Question: {question}
 Answer:"""
 
 
-def answer(question: str, k: int = 4) -> dict:
-    hits = retrieve(question, k=k)
+def answer(question: str, k: int = 4, collection_name: str = DEFAULT_COLLECTION_NAME) -> dict:
+    hits = retrieve(question, k=k, collection_name=collection_name)
     context = "\n\n".join(f"[page {h['page']}] {h['text']}" for h in hits)
     prompt = PROMPT_TEMPLATE.format(context=context, question=question)
     response = generate(prompt)
@@ -43,11 +44,13 @@ def answer(question: str, k: int = 4) -> dict:
     }
 
 
-def answer_from_doc(question: str, doc_id: str, k: int = 4) -> dict:
+def answer_from_doc(
+    question: str, doc_id: str, k: int = 4, collection_name: str = DEFAULT_COLLECTION_NAME
+) -> dict:
     """Same as answer(), but scoped to a single indexed document -- needed
     once more than one document is indexed, otherwise retrieval searches
     across all of them and can return chunks from the wrong policy."""
-    hits = retrieve_from_doc(question, doc_id, k=k)
+    hits = retrieve_from_doc(question, doc_id, k=k, collection_name=collection_name)
     context = "\n\n".join(f"[page {h['page']}] {h['text']}" for h in hits)
     prompt = PROMPT_TEMPLATE.format(context=context, question=question)
     response = generate(prompt)

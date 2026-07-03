@@ -14,6 +14,7 @@ underwriter's review before anything goes to a client -- see the
 """
 
 from src.retrieve import retrieve_from_doc
+from src.index import DEFAULT_COLLECTION_NAME
 from src.llm import generate
 
 # Default aspects checked in every exhibit. Extend this list for a
@@ -41,15 +42,22 @@ Gap: <"None" if equivalent, or a short description of what's present in one but 
 """
 
 
-def build_exhibit(doc_a_id: str, doc_b_id: str, label_a: str = None, label_b: str = None, aspects: list[str] = None) -> dict:
+def build_exhibit(
+    doc_a_id: str,
+    doc_b_id: str,
+    label_a: str = None,
+    label_b: str = None,
+    aspects: list[str] = None,
+    collection_name: str = DEFAULT_COLLECTION_NAME,
+) -> dict:
     label_a = label_a or doc_a_id
     label_b = label_b or doc_b_id
     aspects = aspects or DEFAULT_ASPECTS
 
     rows = []
     for aspect in aspects:
-        hits_a = retrieve_from_doc(aspect, doc_a_id, k=2)
-        hits_b = retrieve_from_doc(aspect, doc_b_id, k=2)
+        hits_a = retrieve_from_doc(aspect, doc_a_id, k=2, collection_name=collection_name)
+        hits_b = retrieve_from_doc(aspect, doc_b_id, k=2, collection_name=collection_name)
 
         context_a = "\n".join(f"[p.{h['page']}] {h['text']}" for h in hits_a) or "(no relevant chunks retrieved)"
         context_b = "\n".join(f"[p.{h['page']}] {h['text']}" for h in hits_b) or "(no relevant chunks retrieved)"

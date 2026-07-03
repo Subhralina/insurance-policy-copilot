@@ -14,7 +14,7 @@ contribute to the answer instead of the retrieval step silently
 dropping documents that were a slightly worse semantic match.
 """
 
-from src.index import get_collection, get_embedder, list_indexed_documents
+from src.index import get_collection, get_embedder, list_indexed_documents, DEFAULT_COLLECTION_NAME
 from src.llm import generate
 
 COMPARISON_PROMPT_TEMPLATE = """You are comparing insurance policy documents to answer a question. \
@@ -35,14 +35,16 @@ Question: {question}
 Answer:"""
 
 
-def retrieve_per_document(query: str, k_per_doc: int = 3) -> dict[str, list[dict]]:
+def retrieve_per_document(
+    query: str, k_per_doc: int = 3, collection_name: str = DEFAULT_COLLECTION_NAME
+) -> dict[str, list[dict]]:
     """Retrieve top-k chunks from EACH indexed document separately."""
     embedder = get_embedder()
-    collection = get_collection(reset=False)
+    collection = get_collection(reset=False, collection_name=collection_name)
     query_embedding = embedder.encode([query]).tolist()
 
     results_by_doc: dict[str, list[dict]] = {}
-    for doc in list_indexed_documents():
+    for doc in list_indexed_documents(collection_name=collection_name):
         doc_id = doc["doc_id"]
         results = collection.query(
             query_embeddings=query_embedding,
@@ -64,8 +66,8 @@ def retrieve_per_document(query: str, k_per_doc: int = 3) -> dict[str, list[dict
     return results_by_doc
 
 
-def compare(question: str, k_per_doc: int = 3) -> dict:
-    per_doc_hits = retrieve_per_document(question, k_per_doc=k_per_doc)
+def compare(question: str, k_per_doc: int = 3, collection_name: str = DEFAULT_COLLECTION_NAME) -> dict:
+    per_doc_hits = retrieve_per_document(question, k_per_doc=k_per_doc, collection_name=collection_name)
 
     context_blocks = []
     for doc_id, hits in per_doc_hits.items():
