@@ -57,11 +57,15 @@ collection_name = f"session_{st.session_state['session_id']}"
 
 with st.sidebar:
     st.subheader("Upload a policy")
-    uploaded = st.file_uploader("PDF", type="pdf", key="uploader")
-    carrier = st.text_input("Carrier name", value="", placeholder="e.g. chubb")
-    coverage = st.text_input("Coverage type", value="", placeholder="e.g. general_liability")
+    with st.form("index_form", clear_on_submit=False):
+        uploaded = st.file_uploader("PDF", type="pdf", key="uploader")
+        carrier = st.text_input("Carrier name", value="", placeholder="e.g. chubb")
+        coverage = st.text_input("Coverage type", value="", placeholder="e.g. general_liability")
+        # Inside a form, pressing Enter in any text field submits the form --
+        # same effect as clicking this button, no separate click needed.
+        submitted = st.form_submit_button("Index this document")
 
-    if uploaded is not None and st.button("Index this document"):
+    if submitted and uploaded is not None:
         doc_id = uploaded.name.replace(".pdf", "")
         # Save under a stable, meaningful filename (not a random tmp name)
         # so doc_id stays consistent across re-runs and matches what the
@@ -79,6 +83,8 @@ with st.sidebar:
                 collection_name=collection_name,
             )
         st.success(f"Indexed {n_chunks} sections from '{doc_id}'")
+    elif submitted and uploaded is None:
+        st.warning("Choose a PDF before indexing.")
 
     st.divider()
     if st.button("🗑️ Clear my documents", help="Removes every document indexed in this session. Cannot be undone."):
@@ -108,8 +114,10 @@ tab_ask, tab_compare, tab_exhibit = st.tabs(["Ask", "Compare", "Exhibit"])
 with tab_ask:
     st.caption("Ask a question about ONE specific document.")
     selected_doc = st.selectbox("Document", doc_ids, key="ask_doc")
-    question = st.text_input("Question", key="ask_question")
-    if question:
+    with st.form("ask_form"):
+        question = st.text_input("Question", key="ask_question")
+        ask_submitted = st.form_submit_button("Ask")
+    if ask_submitted and question:
         with st.spinner("Reading through the document to answer that..."):
             try:
                 result = answer_from_doc(question, selected_doc, collection_name=collection_name)
@@ -124,8 +132,10 @@ with tab_ask:
 
 with tab_compare:
     st.caption("Ask a question that compares ACROSS all indexed documents.")
-    compare_question = st.text_input("Question", key="compare_question")
-    if compare_question:
+    with st.form("compare_form"):
+        compare_question = st.text_input("Question", key="compare_question")
+        compare_submitted = st.form_submit_button("Compare")
+    if compare_submitted and compare_question:
         with st.spinner("Checking each document and comparing..."):
             try:
                 result = compare(compare_question, collection_name=collection_name)
